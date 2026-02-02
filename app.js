@@ -8,6 +8,7 @@ let userLocation = null;
 let userMarker = null;
 let currentRadius = 2; // 預設 2 公里
 let venueMarkers = {}; // 儲存場館 ID 與 marker 的對應關係
+let highlightCircle = null; // 高亮脈衝圓圈
 
 // Icon 設定
 const iconConfig = {
@@ -115,55 +116,75 @@ function updateMap() {
     });
 }
 
-// 高亮特定 marker
+// 高亮特定場館（使用脈衝圓圈，不受群聚影響）
 function highlightMarker(venueId) {
-    const marker = venueMarkers[venueId];
-    if (!marker) {
-        console.warn('找不到場館 marker:', venueId);
+    // 找到場館資料
+    const venue = allVenues.find(v => v.id == venueId);
+    if (!venue) {
+        console.warn('找不到場館資料:', venueId);
         return;
     }
 
-    // 嘗試多次取得 marker 的 DOM 元素（因為群聚展開需要時間）
-    let attempts = 0;
-    const maxAttempts = 10;
+    // 移除之前的高亮圓圈
+    if (highlightCircle) {
+        map.removeLayer(highlightCircle);
+    }
 
-    const tryHighlight = () => {
-        const markerElement = marker.getElement();
+    // 創建脈衝圓圈（使用多個同心圓模擬脈衝效果）
+    const latlng = [venue.coordinates[1], venue.coordinates[0]];
 
-        if (markerElement) {
-            // 找到自訂 marker div
-            const customMarker = markerElement.querySelector('.custom-marker');
+    // 創建多個同心圓圈組
+    const circles = [];
+    const colors = ['#FFD700', '#FFA500', '#FF6B6B'];
 
-            if (customMarker) {
-                // 移除之前的高亮效果
-                document.querySelectorAll('.custom-marker.highlight').forEach(el => {
-                    el.classList.remove('highlight');
-                });
+    // 創建 3 個脈衝圓圈
+    for (let i = 0; i < 3; i++) {
+        setTimeout(() => {
+            const circle = L.circle(latlng, {
+                color: colors[i % colors.length],
+                fillColor: colors[i % colors.length],
+                fillOpacity: 0.4,
+                weight: 3,
+                radius: 50, // 50 米半徑
+                className: 'pulse-circle'
+            }).addTo(map);
 
-                // 添加高亮動畫
-                customMarker.classList.add('highlight');
+            circles.push(circle);
 
-                // 2 秒後移除高亮
-                setTimeout(() => {
-                    customMarker.classList.remove('highlight');
-                }, 2000);
+            // 動畫放大圓圈
+            let radius = 50;
+            let opacity = 0.4;
+            const maxRadius = 150;
+            const step = 5;
 
-                return true; // 成功
+            const animate = setInterval(() => {
+                radius += step;
+                opacity -= 0.02;
+
+                if (radius >= maxRadius || opacity <= 0) {
+                    clearInterval(animate);
+                    map.removeLayer(circle);
+                } else {
+                    circle.setRadius(radius);
+                    circle.setStyle({ fillOpacity: opacity, opacity: opacity * 2 });
+                }
+            }, 50);
+
+        }, i * 300); // 每個圓圈延遲 300ms
+    }
+
+    // 儲存最後一個圓圈的引用（用於清理）
+    highlightCircle = circles[circles.length - 1];
+
+    // 3 秒後清理所有圓圈
+    setTimeout(() => {
+        circles.forEach(circle => {
+            if (map.hasLayer(circle)) {
+                map.removeLayer(circle);
             }
-        }
-
-        // 如果還沒找到且未達最大嘗試次數，繼續嘗試
-        attempts++;
-        if (attempts < maxAttempts) {
-            setTimeout(tryHighlight, 100); // 每 100ms 重試一次
-        } else {
-            console.warn('無法高亮 marker（可能仍在群聚中）:', venueId);
-        }
-
-        return false;
-    };
-
-    tryHighlight();
+        });
+        highlightCircle = null;
+    }, 3000);
 }
 
 // 顯示場館詳情
@@ -224,14 +245,14 @@ function showVenueDetail(venue) {
 
     // 先放大地圖到足夠層級以展開群聚，然後移到該點
     // 使用 flyTo 而非 setView 以產生平滑動畫
-    map.flyTo([venue.coordinates[1], venue.coordinates[0]], 18, {
-        duration: 0.8 // 動畫持續 0.8 秒
+    map.flyTo([venue.coordinates[1], venue.coordinates[0]], 17, {
+        duration: 0.6 // 動畫持續 0.6 秒
     });
 
-    // 等待地圖移動和群聚展開後再高亮顯示 marker
+    // 等待地圖移動後立即顯示高亮效果（脈衝圓圈不受群聚影響）
     setTimeout(() => {
         highlightMarker(venue.id);
-    }, 900); // 稍微延遲以確保群聚已展開
+    }, 650); // 等待飛行動畫完成
 }
 
 // 更新右側場館列表
