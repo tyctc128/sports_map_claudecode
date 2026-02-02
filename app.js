@@ -118,28 +118,52 @@ function updateMap() {
 // 高亮特定 marker
 function highlightMarker(venueId) {
     const marker = venueMarkers[venueId];
-    if (!marker) return;
+    if (!marker) {
+        console.warn('找不到場館 marker:', venueId);
+        return;
+    }
 
-    // 取得 marker 的 DOM 元素
-    const markerElement = marker.getElement();
-    if (!markerElement) return;
+    // 嘗試多次取得 marker 的 DOM 元素（因為群聚展開需要時間）
+    let attempts = 0;
+    const maxAttempts = 10;
 
-    // 找到自訂 marker div
-    const customMarker = markerElement.querySelector('.custom-marker');
-    if (!customMarker) return;
+    const tryHighlight = () => {
+        const markerElement = marker.getElement();
 
-    // 移除之前的高亮效果
-    document.querySelectorAll('.custom-marker.highlight').forEach(el => {
-        el.classList.remove('highlight');
-    });
+        if (markerElement) {
+            // 找到自訂 marker div
+            const customMarker = markerElement.querySelector('.custom-marker');
 
-    // 添加高亮動畫
-    customMarker.classList.add('highlight');
+            if (customMarker) {
+                // 移除之前的高亮效果
+                document.querySelectorAll('.custom-marker.highlight').forEach(el => {
+                    el.classList.remove('highlight');
+                });
 
-    // 2 秒後移除高亮
-    setTimeout(() => {
-        customMarker.classList.remove('highlight');
-    }, 2000);
+                // 添加高亮動畫
+                customMarker.classList.add('highlight');
+
+                // 2 秒後移除高亮
+                setTimeout(() => {
+                    customMarker.classList.remove('highlight');
+                }, 2000);
+
+                return true; // 成功
+            }
+        }
+
+        // 如果還沒找到且未達最大嘗試次數，繼續嘗試
+        attempts++;
+        if (attempts < maxAttempts) {
+            setTimeout(tryHighlight, 100); // 每 100ms 重試一次
+        } else {
+            console.warn('無法高亮 marker（可能仍在群聚中）:', venueId);
+        }
+
+        return false;
+    };
+
+    tryHighlight();
 }
 
 // 顯示場館詳情
@@ -198,11 +222,16 @@ function showVenueDetail(venue) {
 
     detailPanel.classList.add('show');
 
-    // 地圖移到該點
-    map.setView([venue.coordinates[1], venue.coordinates[0]], 16);
+    // 先放大地圖到足夠層級以展開群聚，然後移到該點
+    // 使用 flyTo 而非 setView 以產生平滑動畫
+    map.flyTo([venue.coordinates[1], venue.coordinates[0]], 18, {
+        duration: 0.8 // 動畫持續 0.8 秒
+    });
 
-    // 高亮顯示 marker
-    highlightMarker(venue.id);
+    // 等待地圖移動和群聚展開後再高亮顯示 marker
+    setTimeout(() => {
+        highlightMarker(venue.id);
+    }, 900); // 稍微延遲以確保群聚已展開
 }
 
 // 更新右側場館列表
