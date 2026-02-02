@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(where:*)",
+      "Bash(start http://localhost:8000)",
+      "Bash(timeout:*)",
+      "Bash(dir:*)"
+    ]
+  }
+}
